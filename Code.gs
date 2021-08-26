@@ -153,19 +153,29 @@ function processMessage(message, rule, config) {
       continue;
     }
     try {
-      var folderName = Utilities.formatDate(messageDate, config.timezone, rule.folder.replace('%s', message.getSubject()));
+      var folderName = Utilities.formatDate(messageDate, config.timezone, rule.folder
+        .replace('%s', message.getSubject()
+        .replace('%f', attachment.getName().split('.').slice(0, -1).join('.')))
+      );
+      
       folderName = folderName.replace(':', '');
       Logger.log("Saving to folder" + folderName);
       var folder = getOrCreateFolder(folderName);
       var file = folder.createFile(attachment);
       var filename = file.getName();
       if (rule.filenameFrom && rule.filenameTo && rule.filenameFrom == file.getName()) {
-        filename = Utilities.formatDate(messageDate, config.timezone, rule.filenameTo.replace('%s',message.getSubject()));
+        filename = Utilities.formatDate(messageDate, config.timezone, rule.filenameTo
+          .replace('%s',message.getSubject()
+          .replace('%f', attachment.getName().split('.').slice(0, -1).join('.')))
+        );
         Logger.log("INFO:           Renaming matched file '" + file.getName() + "' -> '" + filename + "'");
         file.setName(filename);
       }
       else if (rule.filenameTo) {
-        filename = Utilities.formatDate(messageDate, config.timezone, rule.filenameTo.replace('%s',message.getSubject()));
+        filename = Utilities.formatDate(messageDate, config.timezone, rule.filenameTo
+          .replace('%s',message.getSubject())
+          .replace('%f', attachment.getName().split('.').slice(0, -1).join('.'))
+        );
         Logger.log("INFO:           Renaming '" + file.getName() + "' -> '" + filename + "'");
         file.setName(filename);
       }
