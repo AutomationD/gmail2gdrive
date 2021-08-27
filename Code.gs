@@ -1,6 +1,6 @@
 // Gmail2GDrive
 // https://github.com/ahochsteger/gmail2gdrive
-
+var DEBUG = false;
 /**
  * Main function that processes Gmail attachments and stores them in Google Drive.
  * Use this as trigger function for periodic execution.
@@ -61,18 +61,22 @@ function Gmail2GDrive() {
           var message = messages[msgIdx];
           processMessage(message, rule, config, labels);
         }
+        
         if (doPDF) { // Generate a PDF document of a thread:
-          processThreadToPdf(thread, rule);
+          processThreadToPdf(thread, rule, config, labels);
         }
 
         
         // Mark a thread as processed:
         var label = getOrCreateLabel(config.processedLabel);
-        thread.addLabel(label);
+        
+        if (!DEBUG)
+          thread.addLabel(label);
 
         if (doArchive) { // Archive a thread if required
           Logger.log("INFO:     Archiving thread '" + thread.getFirstMessageSubject() + "' ...");
-          thread.moveToArchive();
+          if (!DEBUG)
+            thread.moveToArchive();
         }
       }
       
@@ -165,13 +169,28 @@ function getOrCreateFolder(folderName) {
 /**
  * Returns formatted file/direcotry name.
  */
-function formatName(name, message, attachment, config, tags) {
-  name = name.replace('%s',message.getSubject())
-          .replace('%f', attachment.getName()
-            .split('.')
-            .slice(0, -1)
-            .join('.'));
-          
+
+function formatName(name, message, attachment, config, tags, thread) {
+// function formatName(name="", message, attachment, config, tags, thread) {
+  var date = message === null ? thread.getLastMessageDate() : message.getDate();
+  var subject = "";
+  var filename = "email.pdf";
+
+  if (message && attachment) {     
+    subject = message.getSubject();
+    filename = attachment.getName();
+  } else {
+    if (thread) {
+      subject = thread.getFirstMessageSubject();    
+    }
+  }
+  
+  name = name.replace('%s',subject)
+      .replace('%f', filename
+        .split('.')
+        .slice(0, -1)
+        .join('.'));
+        
   if (tags){
     for (var i = 0; i < tags.length; i++) {
       name = name
@@ -179,12 +198,37 @@ function formatName(name, message, attachment, config, tags) {
     }
           
   }
-  name = Utilities.formatDate(message.getDate(), config.timezone, name)
+  
+  name = Utilities.formatDate(date, config.timezone, name)
     .replace(':', '');
   
   return name;
 }
 
+function getTags(rule, labels){ 
+  // Parse label key/value and use it in the file rename
+      tags = [];
+      if (rule.labelsRegexp && rule.filenameTo) {
+        var match = false;
+        for (var i = 0; i < labels.length; i++) {
+          
+          var re = new RegExp(rule.labelsRegexp);
+          match = labels[i].getName().match(re);
+          
+          if (match) {
+            if (match.groups.key && match.groups.value) {
+              tags.push({"key": match.groups.key, "value": match.groups.value});
+              Logger.log("INFO:           Found "+ match.groups.key + ": " + match.groups.value);              
+            }
+          } 
+        }
+        
+        // filename = formatName(filename, message, attachment, config, label)
+        // Logger.log("INFO:           Updated filename '" + file.getName() + "' -> '" + filename + "'");
+        // file.setName(filename);
+      }
+      return tags;
+}
 
 /**
  * Processes a message
@@ -213,36 +257,15 @@ function processMessage(message, rule, config, labels) {
     }
 
     
- 
     try {
       
-      // Parse label key/value and use it in the file rename
-      if (rule.labelsRegexp && rule.filenameTo) {
-        var match = false;
-        for (var i = 0; i < labels.length; i++) {
-          
-          var re = new RegExp(rule.labelsRegexp);
-          match = labels[i].getName().match(re);
-          
-          if (match) {
-            if (match.groups.key && match.groups.value) {
-              tags.push({"key": match.groups.key, "value": match.groups.value});
-              Logger.log("INFO:           Found "+ match.groups.key + ": " + match.groups.value);              
-            }
-          } 
-        }
-        
-        // If we couldn't find a label with a match
-        if (!match) {
-            Logger.log("INFO:           Rejecting label '" + labels[i].getName() + ". Can't find a match for" + rule.labelsRegexp);
-            continue;
-          }
-        
-        // filename = formatName(filename, message, attachment, config, label)
-        // Logger.log("INFO:           Updated filename '" + file.getName() + "' -> '" + filename + "'");
-        // file.setName(filename);
-      }
+      tags = getTags(rule, labels);
       
+      // If we couldn't find a label with a match
+      if (!tags) {
+        Logger.log("INFO:           Rejecting label '" + labels[i].getName() + ". Can't find a match for" + rule.labelsRegexp);
+        continue;
+      }
       var folderName = formatName(rule.folder, message, attachment, config, tags)      
       
       Logger.log("INFO:  Saving to folder " + folderName);
@@ -313,11 +336,15 @@ function processThreadToHtml(thread) {
 /**
 * Generate a PDF document for the whole thread using HTML from .
  */
-function processThreadToPdf(thread, rule) {
-  Logger.log("INFO: Saving PDF copy of thread '" + thread.getFirstMessageSubject() + "'");
-  var folder = getOrCreateFolder(rule.folder);
+function processThreadToPdf(thread, rule, config, labels) {  
+  var tags = getTags(rule, labels);
+  var folderName = formatName(rule.folder, null, null, config, tags, thread);
+  var folder = getOrCreateFolder(folderName);
   var html = processThreadToHtml(thread);
   var blob = Utilities.newBlob(html, 'text/html');
-  var pdf = folder.createFile(blob.getAs('application/pdf')).setName(thread.getFirstMessageSubject() + ".pdf");
+  
+  var filename = formatName(rule.filenameTo, null, null, config, tags, thread);
+  Logger.log("INFO: Saving PDF copy of thread to '"+folderName + " as " + filename + "'");
+  var pdf = folder.createFile(blob.getAs('application/pdf')).setName(filename);
   return pdf;
 }
