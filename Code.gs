@@ -211,28 +211,17 @@ function processMessage(message, rule, config, labels) {
         continue;
       }
     }
+
+    
  
     try {
-      var folderName = formatName(rule.folder, message, attachment, config)      
       
-      Logger.log("Saving to folder " + folderName);
-      var folder = getOrCreateFolder(folderName);
-      var file = folder.createFile(attachment);
-      if (rule.filenameTo) {
-        var filename = rule.filenameTo;
-      } else {
-        var filename = file.getName();
-      }
-      
-      var label = {};
-
-
       // Parse label key/value and use it in the file rename
-      if (rule.filenameFromLabelsRegexp && rule.filenameTo) {
+      if (rule.labelsRegexp && rule.filenameTo) {
         var match = false;
         for (var i = 0; i < labels.length; i++) {
           
-          var re = new RegExp(rule.filenameFromLabelsRegexp);
+          var re = new RegExp(rule.labelsRegexp);
           match = labels[i].getName().match(re);
           
           if (match) {
@@ -245,7 +234,7 @@ function processMessage(message, rule, config, labels) {
         
         // If we couldn't find a label with a match
         if (!match) {
-            Logger.log("INFO:           Rejecting label '" + labels[i].getName() + ". Can't find a match for" + rule.filenameFromLabelsRegexp);
+            Logger.log("INFO:           Rejecting label '" + labels[i].getName() + ". Can't find a match for" + rule.labelsRegexp);
             continue;
           }
         
@@ -253,6 +242,20 @@ function processMessage(message, rule, config, labels) {
         // Logger.log("INFO:           Updated filename '" + file.getName() + "' -> '" + filename + "'");
         // file.setName(filename);
       }
+      
+      var folderName = formatName(rule.folder, message, attachment, config, tags)      
+      
+      Logger.log("INFO:  Saving to folder " + folderName);
+      var folder = getOrCreateFolder(folderName);
+      var file = folder.createFile(attachment);
+      if (rule.filenameTo) {
+        var filename = rule.filenameTo;
+      } else {
+        var filename = file.getName();
+      }
+      
+      var label = {};
+
       
       if (
           rule.filenameFrom && 
@@ -278,6 +281,8 @@ function processMessage(message, rule, config, labels) {
       
 
       file.setDescription("Mail title: " + message.getSubject() + "\nMail date: " + message.getDate() + "\nMail link: https://mail.google.com/mail/u/0/#inbox/" + message.getId());
+
+      
       Utilities.sleep(config.sleepTime);
     } catch (e) {
       Logger.log(e);
