@@ -8,7 +8,6 @@
 function Gmail2GDrive() {
   if (!GmailApp) return; // Skip script execution if GMail is currently not available (yes this happens from time to time and triggers spam emails!)
   var config = getGmail2GDriveConfig();
-  var label = getOrCreateLabel(config.processedLabel);
   var end, start, runTime;
   start = new Date(); // Start timer
 
@@ -41,12 +40,17 @@ function Gmail2GDrive() {
       }
 
       
-      if (rule.label) { // Just label the message if this rule is configured
-        labelText = rule.label.replace('%s',thread.getFirstMessageSubject());
-        var label = getOrCreateLabel(labelText);
+      if (rule.labels) { // Just label the message if this rule is configured
         
-        Logger.log("INFO:           Setting Label '" + labelText +"'");
-        thread.addLabel(label);
+        for (var i=0; i<rule.labels.length; i++) {
+          labelText = rule.labels[i]
+            .replace('%s',thread.getFirstMessageSubject());
+          var label = getOrCreateLabel(labelText);
+          
+          Logger.log("INFO:           Setting Label '" + labelText +"'");
+          thread.addLabel(label);
+        }
+        
       } else {
         
         // Process all messages of a thread:
@@ -63,6 +67,7 @@ function Gmail2GDrive() {
 
         
         // Mark a thread as processed:
+        var label = getOrCreateLabel(config.processedLabel);
         thread.addLabel(label);
 
         if (doArchive) { // Archive a thread if required
@@ -160,16 +165,20 @@ function getOrCreateFolder(folderName) {
 /**
  * Returns formatted file/direcotry name.
  */
-function formatName(name, message, attachment, config, label={}) {
+function formatName(name, message, attachment, config, tags) {
   name = name.replace('%s',message.getSubject())
-          .replace('%k', label.key == undefined ? "" : label.key)
-          .replace('%v', label.value  == undefined ? "" : label.value)
           .replace('%f', attachment.getName()
             .split('.')
             .slice(0, -1)
             .join('.'));
           
-        
+  if (tags){
+    for (var i = 0; i < tags.length; i++) {
+      name = name
+        .replace('{{' + tags[i].key + '}}', tags[i].value == undefined ? "" : tags[i].value);        
+    }
+          
+  }
   name = Utilities.formatDate(message.getDate(), config.timezone, name)
     .replace(':', '');
   
@@ -189,6 +198,7 @@ function processMessage(message, rule, config, labels) {
   }
 
   for (var attIdx=0; attIdx<attachments.length; attIdx++) {
+    var tags = []
     var attachment = attachments[attIdx];
     Logger.log("INFO:         Processing attachment: "+attachment.getName());
     
@@ -208,37 +218,40 @@ function processMessage(message, rule, config, labels) {
       Logger.log("Saving to folder " + folderName);
       var folder = getOrCreateFolder(folderName);
       var file = folder.createFile(attachment);
-      var filename = file.getName();
+      if (rule.filenameTo) {
+        var filename = rule.filenameTo;
+      } else {
+        var filename = file.getName();
+      }
+      
       var label = {};
 
 
       // Parse label key/value and use it in the file rename
-      if (rule.filenameFromLabelRegexp && rule.filenameTo) {
+      if (rule.filenameFromLabelsRegexp && rule.filenameTo) {
         var match = false;
         for (var i = 0; i < labels.length; i++) {
           
-          var re = new RegExp(rule.filenameFromLabelRegexp);
+          var re = new RegExp(rule.filenameFromLabelsRegexp);
           match = labels[i].getName().match(re);
           
           if (match) {
             if (match.groups.key && match.groups.value) {
-              label.key = match.groups.key;
-              label.value = match.groups.value;
-              Logger.log("INFO:           Found "+label.key + ": " + label.value);
-              break;
+              tags.push({"key": match.groups.key, "value": match.groups.value});
+              Logger.log("INFO:           Found "+ match.groups.key + ": " + match.groups.value);              
             }
           } 
         }
         
         // If we couldn't find a label with a match
         if (!match) {
-            Logger.log("INFO:           Rejecting label '" + labels[i].getName() + ". Can't find a match for" + rule.filenameFromLabelRegexpr);
+            Logger.log("INFO:           Rejecting label '" + labels[i].getName() + ". Can't find a match for" + rule.filenameFromLabelsRegexp);
             continue;
           }
         
-        filename = formatName(rule.filenameTo, message, attachment, config, label)
-        Logger.log("INFO:           Renaming matched file '" + file.getName() + "' -> '" + filename + "'");
-        file.setName(filename);
+        // filename = formatName(filename, message, attachment, config, label)
+        // Logger.log("INFO:           Updated filename '" + file.getName() + "' -> '" + filename + "'");
+        // file.setName(filename);
       }
       
       if (
@@ -247,18 +260,21 @@ function processMessage(message, rule, config, labels) {
           rule.filenameFrom == file.getName()
         ) 
       {
-        filename = formatName(rule.filenameTo, message, attachment, config)
+        filename = formatName(filename, message, attachment, config, tags)
 
-        Logger.log("INFO:           Renaming matched file '" + file.getName() + "' -> '" + filename + "'");
-        file.setName(filename);
+        Logger.log("INFO:           Updating matched filename '" + file.getName() + "' -> '" + filename + "'");
+        // file.setName(filename);
       }
       
       else if (rule.filenameTo) {
-        filename = formatName(rule.filenameTo,message, attachment, config);
+        filename = formatName(rule.filenameTo,message, attachment, config, tags);
         
-        Logger.log("INFO:           Renaming '" + file.getName() + "' -> '" + filename + "'");
-        file.setName(filename);
+        Logger.log("INFO:           Updating filename '" + file.getName() + "' -> '" + filename + "'");
+        // file.setName(filename);
       }
+
+      Logger.log("INFO:           Renaming file '" + file.getName() + "' -> '" + filename + "'");
+      file.setName(filename);
       
 
       file.setDescription("Mail title: " + message.getSubject() + "\nMail date: " + message.getDate() + "\nMail link: https://mail.google.com/mail/u/0/#inbox/" + message.getId());
