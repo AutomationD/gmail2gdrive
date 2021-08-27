@@ -160,8 +160,10 @@ function getOrCreateFolder(folderName) {
 /**
  * Returns formatted file/direcotry name.
  */
-function formatName(name, message, attachment, config) {
+function formatName(name, message, attachment, config, label={}) {
   name = name.replace('%s',message.getSubject())
+          .replace('%k', label.key == undefined ? "" : label.key)
+          .replace('%v', label.value  == undefined ? "" : label.value)
           .replace('%f', attachment.getName()
             .split('.')
             .slice(0, -1)
@@ -189,7 +191,6 @@ function processMessage(message, rule, config, labels) {
   for (var attIdx=0; attIdx<attachments.length; attIdx++) {
     var attachment = attachments[attIdx];
     Logger.log("INFO:         Processing attachment: "+attachment.getName());
-    var match = true;
     
     if (rule.filenameFromRegexp) {
       var re = new RegExp(rule.filenameFromRegexp);
@@ -208,7 +209,38 @@ function processMessage(message, rule, config, labels) {
       var folder = getOrCreateFolder(folderName);
       var file = folder.createFile(attachment);
       var filename = file.getName();
+      var label = {};
 
+
+      // Parse label key/value and use it in the file rename
+      if (rule.filenameFromLabelRegexp && rule.filenameTo) {
+        var match = false;
+        for (var i = 0; i < labels.length; i++) {
+          
+          var re = new RegExp(rule.filenameFromLabelRegexp);
+          match = labels[i].getName().match(re);
+          
+          if (match) {
+            if (match.groups.key && match.groups.value) {
+              label.key = match.groups.key;
+              label.value = match.groups.value;
+              Logger.log("INFO:           Found "+label.key + ": " + label.value);
+              break;
+            }
+          } 
+        }
+        
+        // If we couldn't find a label with a match
+        if (!match) {
+            Logger.log("INFO:           Rejecting label '" + labels[i].getName() + ". Can't find a match for" + rule.filenameFromLabelRegexpr);
+            continue;
+          }
+        
+        filename = formatName(rule.filenameTo, message, attachment, config, label)
+        Logger.log("INFO:           Renaming matched file '" + file.getName() + "' -> '" + filename + "'");
+        file.setName(filename);
+      }
+      
       if (
           rule.filenameFrom && 
           rule.filenameTo && 
