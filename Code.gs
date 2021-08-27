@@ -1,6 +1,6 @@
 // Gmail2GDrive
 // https://github.com/ahochsteger/gmail2gdrive
-var DEBUG = false;
+
 /**
  * Main function that processes Gmail attachments and stores them in Google Drive.
  * Use this as trigger function for periodic execution.
@@ -70,12 +70,12 @@ function Gmail2GDrive() {
         // Mark a thread as processed:
         var label = getOrCreateLabel(config.processedLabel);
         
-        if (!DEBUG)
+        if (!config.debug)
           thread.addLabel(label);
 
         if (doArchive) { // Archive a thread if required
           Logger.log("INFO:     Archiving thread '" + thread.getFirstMessageSubject() + "' ...");
-          if (!DEBUG)
+          if (!config.debug)
             thread.moveToArchive();
         }
       }
