@@ -40,23 +40,39 @@ function Gmail2GDrive() {
         return;
       }
 
-      // Process all messages of a thread:
-      var messages = thread.getMessages();
-      for (var msgIdx=0; msgIdx<messages.length; msgIdx++) {
-        var message = messages[msgIdx];
-        processMessage(message, rule, config);
-      }
-      if (doPDF) { // Generate a PDF document of a thread:
-        processThreadToPdf(thread, rule);
-      }
+      
+      if (rule.label) { // Just label the message if this rule is configured
+        labelText = rule.label.replace('%s',thread.getFirstMessageSubject());
+        var label = getOrCreateLabel(labelText);
+        // var localLabel = GmailApp.getUserLabelByName(rule.label.toString());
+        Logger.log("INFO:           Setting Label '" + labelText +"'");
+        thread.addLabel(label);
+      } else {
+        
+        // Process all messages of a thread:
+        var labels = thread.getLabels();        
 
-      // Mark a thread as processed:
-      thread.addLabel(label);
+        var messages = thread.getMessages();
+        for (var msgIdx=0; msgIdx<messages.length; msgIdx++) {
+          var message = messages[msgIdx];
+          processMessage(message, rule, config, labels);
+        }
+        if (doPDF) { // Generate a PDF document of a thread:
+          processThreadToPdf(thread, rule);
+        }
 
-      if (doArchive) { // Archive a thread if required
-        Logger.log("INFO:     Archiving thread '" + thread.getFirstMessageSubject() + "' ...");
-        thread.moveToArchive();
+        
+        // Mark a thread as processed:
+        thread.addLabel(label);
+
+        if (doArchive) { // Archive a thread if required
+          Logger.log("INFO:     Archiving thread '" + thread.getFirstMessageSubject() + "' ...");
+          thread.moveToArchive();
+        }
       }
+      
+
+      
     }
   }
   end = new Date(); // Stop timer
@@ -134,51 +150,79 @@ function getOrCreateFolder(folderName) {
 }
 
 /**
+ * Returns formatted file/direcotry name.
+ */
+function formatName(name, message, attachment, config) {
+  name = name.replace('%s',message.getSubject())
+          .replace('%f', attachment.getName()
+            .split('.')
+            .slice(0, -1)
+            .join('.'));
+          
+        
+  name = Utilities.formatDate(message.getDate(), config.timezone, name)
+    .replace(':', '');
+  
+  return name;
+}
+
+
+/**
  * Processes a message
  */
-function processMessage(message, rule, config) {
+function processMessage(message, rule, config, labels) {
   Logger.log("INFO:       Processing message: "+message.getSubject() + " (" + message.getId() + ")");
   var messageDate = message.getDate();
   var attachments = message.getAttachments();
+  for (var i = 0; i < labels.length; i++) {
+    Logger.log("INFO:           labels:" + labels[i].getName());
+  }
+
   for (var attIdx=0; attIdx<attachments.length; attIdx++) {
     var attachment = attachments[attIdx];
     Logger.log("INFO:         Processing attachment: "+attachment.getName());
     var match = true;
+    
     if (rule.filenameFromRegexp) {
-    var re = new RegExp(rule.filenameFromRegexp);
+      var re = new RegExp(rule.filenameFromRegexp);
       match = (attachment.getName()).match(re);
-    }
-    if (!match) {
-      Logger.log("INFO:           Rejecting file '" + attachment.getName() + " not matching" + rule.filenameFromRegexp);
-      continue;
-    }
-    try {
-      var folderName = Utilities.formatDate(messageDate, config.timezone, rule.folder
-        .replace('%s', message.getSubject()
-        .replace('%f', attachment.getName().split('.').slice(0, -1).join('.')))
-      );
       
-      folderName = folderName.replace(':', '');
-      Logger.log("Saving to folder" + folderName);
+      if (!match) {
+        Logger.log("INFO:           Rejecting file '" + attachment.getName() + " not matching" + rule.filenameFromRegexp);
+        continue;
+      }
+    }
+ 
+    try {
+      var folderName = formatName(rule.folder, message, attachment, config)
+      
+      Logger.log("Saving to folder " + folderName);
       var folder = getOrCreateFolder(folderName);
       var file = folder.createFile(attachment);
       var filename = file.getName();
-      if (rule.filenameFrom && rule.filenameTo && rule.filenameFrom == file.getName()) {
-        filename = Utilities.formatDate(messageDate, config.timezone, rule.filenameTo
-          .replace('%s',message.getSubject()
-          .replace('%f', attachment.getName().split('.').slice(0, -1).join('.')))
-        );
+      
+      
+
+      if (
+          rule.filenameFrom && 
+          rule.filenameTo && 
+          rule.filenameFrom == file.getName()
+        ) 
+      {
+        filename = formatName(rule.filenameTo, message, attachment, config)
+
         Logger.log("INFO:           Renaming matched file '" + file.getName() + "' -> '" + filename + "'");
         file.setName(filename);
       }
+      
       else if (rule.filenameTo) {
-        filename = Utilities.formatDate(messageDate, config.timezone, rule.filenameTo
-          .replace('%s',message.getSubject())
-          .replace('%f', attachment.getName().split('.').slice(0, -1).join('.'))
-        );
+        filename = formatName(rule.filenameTo,message, attachment, config);
+        
         Logger.log("INFO:           Renaming '" + file.getName() + "' -> '" + filename + "'");
         file.setName(filename);
       }
+      
+
       file.setDescription("Mail title: " + message.getSubject() + "\nMail date: " + message.getDate() + "\nMail link: https://mail.google.com/mail/u/0/#inbox/" + message.getId());
       Utilities.sleep(config.sleepTime);
     } catch (e) {
