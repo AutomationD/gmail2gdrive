@@ -44,7 +44,7 @@ function Gmail2GDrive() {
       if (rule.label) { // Just label the message if this rule is configured
         labelText = rule.label.replace('%s',thread.getFirstMessageSubject());
         var label = getOrCreateLabel(labelText);
-        // var localLabel = GmailApp.getUserLabelByName(rule.label.toString());
+        
         Logger.log("INFO:           Setting Label '" + labelText +"'");
         thread.addLabel(label);
       } else {
@@ -84,10 +84,18 @@ function Gmail2GDrive() {
  * Returns the label with the given name or creates it if not existing.
  */
 function getOrCreateLabel(labelName) {
-  var label = GmailApp.getUserLabelByName(labelName);
-  if (label == null) {
-    label = GmailApp.createLabel(labelName);
+  var labels = labelName.split("/");
+  var label, labelStem = "";
+
+  for (var i=0; i<labels.length; i++) {
+
+    if (labels[i] !== "") {
+      labelStem = labelStem + ((i===0) ? "" : "/") + labels[i];
+      label = GmailApp.getUserLabelByName(labelStem) ?
+                  GmailApp.getUserLabelByName(labelStem) : GmailApp.createLabel(labelStem);
+    }
   }
+
   return label;
 }
 
@@ -194,14 +202,12 @@ function processMessage(message, rule, config, labels) {
     }
  
     try {
-      var folderName = formatName(rule.folder, message, attachment, config)
+      var folderName = formatName(rule.folder, message, attachment, config)      
       
       Logger.log("Saving to folder " + folderName);
       var folder = getOrCreateFolder(folderName);
       var file = folder.createFile(attachment);
       var filename = file.getName();
-      
-      
 
       if (
           rule.filenameFrom && 
