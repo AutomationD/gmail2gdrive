@@ -50,7 +50,7 @@ function Gmail2GDrive() {
           Logger.log("INFO:           Setting Label '" + labelText +"'");
           thread.addLabel(label);
         }
-        
+          
       } else {
         
         // Process all messages of a thread:
@@ -205,6 +205,9 @@ function formatName(name, message, attachment, config, tags, thread) {
   return name;
 }
 
+/**
+ * Create tags
+ */
 function getTags(rule, labels){ 
   // Parse label key/value and use it in the file rename
       tags = [];
@@ -222,10 +225,6 @@ function getTags(rule, labels){
             }
           } 
         }
-        
-        // filename = formatName(filename, message, attachment, config, label)
-        // Logger.log("INFO:           Updated filename '" + file.getName() + "' -> '" + filename + "'");
-        // file.setName(filename);
       }
       return tags;
 }
@@ -258,7 +257,6 @@ function processMessage(message, rule, config, labels) {
 
     
     try {
-      
       tags = getTags(rule, labels);
       
       // If we couldn't find a label with a match
@@ -271,6 +269,7 @@ function processMessage(message, rule, config, labels) {
       Logger.log("INFO:  Saving to folder " + folderName);
       var folder = getOrCreateFolder(folderName);
       var file = folder.createFile(attachment);
+      
       if (rule.filenameTo) {
         var filename = rule.filenameTo;
       } else {
@@ -302,11 +301,19 @@ function processMessage(message, rule, config, labels) {
       Logger.log("INFO:           Renaming file '" + file.getName() + "' -> '" + filename + "'");
       file.setName(filename);
       
-
       file.setDescription("Mail title: " + message.getSubject() + "\nMail date: " + message.getDate() + "\nMail link: https://mail.google.com/mail/u/0/#inbox/" + message.getId());
-
       
       Utilities.sleep(config.sleepTime);
+
+      if (rule.emailTo) {        
+          MailApp.sendEmail(rule.emailTo, filename, "", {
+          attachments: [file.getAs(MimeType.PDF)],
+          name: "Dmitry Kireev's Gmail Mailer"
+        });
+        Logger.log("INFO:           Sent email to " + rule.emailTo); 
+    }
+
+    Utilities.sleep(config.sleepTime);
     } catch (e) {
       Logger.log(e);
     }
